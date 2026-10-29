@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -14,7 +14,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS if settings.CORS_ORIGINS else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,9 +45,18 @@ if os.path.exists(static_dir):
     if os.path.exists(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-    # Catch-all route to serve index.html for React Router / SPA fallback
+    # Serve SPA entry for root path
+    @app.get("/")
+    async def serve_root():
+        return FileResponse(os.path.join(static_dir, "index.html"))
+
+    # Catch-all route to serve static files or fallback to index.html
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        # Don't hijack unmatched /api routes
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API route not found")
+
         target_path = os.path.join(static_dir, full_path)
         if full_path and os.path.isfile(target_path):
             return FileResponse(target_path)
